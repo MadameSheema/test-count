@@ -7,10 +7,11 @@
   "dependencies": {
     "@elastic/elasticsearch": "^8.14.0",
     "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
     "simple-git": "^3.25.0"
   },
   "scripts": {
-    "start": "ts-node count.ts"
+    "start": "ts-node src/index.ts"
   },
   "devDependencies": {
     "@types/node": "^20.14.12",
