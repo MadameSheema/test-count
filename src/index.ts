@@ -6,8 +6,10 @@ const localPath = './kibana';
 
 async function processRepo(repoUrl: string, localPath: string): Promise<void> {
   const directoriesToProcess = [
-    { file: 'kibana/x-pack/test/security_solution_cypress/cypress/e2e', type: 'cypress' },
-    { file: 'kibana/x-pack/test/security_solution_api_integration', type: 'API' }
+      { file: 'kibana/x-pack/test/security_solution_cypress/cypress/e2e', type: 'cypress' },
+      { file: 'kibana/x-pack/test/security_solution_api_integration', type: 'API' },
+      { file: 'kibana/x-pack/plugins/security_solution/public/management/cypress/e2e', type: 'cypress'},
+      { file: 'kibana/x-pack/plugins/osquery/cypress/e2e', type: 'cypress'}
   ];
 
   try {
