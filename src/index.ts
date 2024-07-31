@@ -14,7 +14,7 @@ async function processRepo(repoUrl: string, localPath: string): Promise<void> {
 
   try {
     console.log(`Cloning the ${repoUrl} to ${localPath}...`);
-    //await git.clone(repoUrl, localPath);
+    await git.clone(repoUrl, localPath);
 
     console.log('Starting the file processing.');
     for (const { file, type } of directoriesToProcess) {
