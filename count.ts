@@ -1,12 +1,20 @@
 import simpleGit, { type SimpleGit } from 'simple-git';
 import * as fs from 'fs/promises';
 import path from 'path';
+import { Client } from '@elastic/elasticsearch';
 
-async function processFile(filePath: string): Promise<void> {
+const client = new Client({
+  node:'',
+  auth: {
+     apiKey: '' 
+  }
+});
+
+async function processFile(filePath: string, type: string): Promise<void> {
   try {
     const content = await fs.readFile(filePath, 'utf-8');
 
-    const combinedRegex = /(describe\.skip|describe|it\.skip|it)\s*\(/g;
+    const combinedRegex = /(describe\.skip|describe|it\.skip|\bit\b)\s*\(/g;
 
     let describeSkipCount = 0;
     let describeCount = 0;
@@ -15,33 +23,32 @@ async function processFile(filePath: string): Promise<void> {
     let itInDescribeSkipCount = 0;
 
     let match;
-    let describeStack = []; 
-    let currentDescribeIsSkipped = false;
+    let describeStack: boolean[] = [];
+
 
     while ((match = combinedRegex.exec(content)) !== null) {
       const matchType = match[1];
+      const isCurrentDescribeSkipped = describeStack.includes(true);
       switch (matchType) {
         case 'describe.skip':
           describeSkipCount++;
-          describeStack.push('skip');
-          currentDescribeIsSkipped = true;
+          describeStack.push(true);
           break;
         case 'describe':
           describeCount++;
-          describeStack.push('normal');
-          currentDescribeIsSkipped = false;
+          describeStack.push(false);
           break;
         case 'it.skip':
           itSkipCount++;
           itCount++;
-          if (describeStack.includes('skip')) {
+          if (isCurrentDescribeSkipped) {
             itInDescribeSkipCount++;
           }
           break;
         case 'it':
           itCount++;
-          if (describeStack.includes('skip')) {
-            itInDescribeSkipCount++;
+          if (isCurrentDescribeSkipped) {
+            itSkipCount++;
           }
           break;
       }
@@ -51,49 +58,98 @@ async function processFile(filePath: string): Promise<void> {
         if (describeStack.length > 0) {
           describeStack.pop();
         }
-        currentDescribeIsSkipped = describeStack.includes('skip');
       }
     }
 
-    console.log(`File: ${filePath}`);
-    console.log('Total number of describes:', describeCount + describeSkipCount);
-    console.log('Total number of tests:', itCount);
-    console.log('Total number of skipped tests:', itSkipCount);
-    console.log('Number of "it" inside "describe.skip":', itInDescribeSkipCount);
+    const cypressTeamRegex =  /e2e\/([^\/]+)/;
+    const APITeamRegex =  /test_suites\/([^\/]+)/;
+
+    const regex = type === 'cypress' ? cypressTeamRegex : APITeamRegex
+
+    const teamMatch = filePath.match(regex)
+    let team = teamMatch ? teamMatch[1] : null;
+
+    if(team?.match(/detections?_response/)){
+      const subTeam = filePath.match(/detections?_response\/([^\/]+)/)
+      team = subTeam ? subTeam[1] : null;
+    }
+
+    if(team === 'investigation') {
+      team = 'investigations';
+    }
+
+    if(team === 'rules_management') {
+      team = 'rule_management';
+    }
+
+    if (team === 'telemetry' || team === 'user_roles') {
+      team = 'detection_engine'
+    }
+
+    if(itCount > 0) {
+        const testData = { 
+          "@timestamp": new Date().toISOString(),
+          team,
+          filePath,
+          totalTests: itCount,
+          skippedTests: itSkipCount,
+          type
+        };
+
+
+        await sendToElasticsearch(testData);
+      }
+
+    console.log(`Scanning: ${filePath}`);
 
   } catch (error) {
     console.error(`Error al procesar archivo ${filePath}: ${error}`);
   }
 }
 
+async function sendToElasticsearch(testData: Record<string, any>): Promise<void> {
+  try {
+    const response = await client.index({
+      index: 'skipped-tests',
+      body: testData,
+    });
+
+    console.log(`Data send to Elasticsearch: ${response}`);
+  } catch (error) {
+    console.error('There is an error sending the data to Elasticsearch:', error);
+  }
+}
+
 async function processRepo(repoUrl: string, localPath: string): Promise<void> {
   const git: SimpleGit = simpleGit();
 
-  try {
-    console.log(`Clonando repositorio desde ${repoUrl} a ${localPath}...`);
-    // await git.clone(repoUrl, localPath);
+  const toProcess = [{file: 'kibana/x-pack/test/security_solution_cypress/cypress/e2e', type: 'cypress'}, {file: 'kibana/x-pack/test/security_solution_api_integration', type: 'API'}]
 
-    // Procesar cada archivo de tests dentro del repositorio clonado
-    console.log('Procesando archivos de tests...');
-    await processDirectory(localPath);
+  try {
+    console.log(`Cloning the ${repoUrl} to ${localPath}...`);
+    await git.clone(repoUrl, localPath);
+
+    console.log('Starting the file processing.');
+
+   for(const { file, type } of toProcess) {
+      await processDirectory(file, type);
+    }
+   
   } catch (error) {
     console.error(`Error al clonar o procesar el repositorio: ${error}`);
   }
 }
 
-async function processDirectory(directoryPath: string): Promise<void> {
+async function processDirectory(directoryPath: string, type: string): Promise<void> {
   try {
     const files = await fs.readdir(directoryPath);
     for (const file of files) {
       const filePath = path.join(directoryPath, file);
       const fileStat = await fs.stat(filePath);
       if (fileStat.isDirectory()) {
-        await processDirectory(filePath);
+        await processDirectory(filePath, type);
       } else {
-        // Si es un archivo, procesarlo
-        if (file.endsWith('.cy.ts')) { // Asumiendo que son archivos de tests de Cypress
-          await processFile(filePath);
-        }
+          await processFile(filePath, type);               
       }
     }
   } catch (error) {
@@ -101,14 +157,7 @@ async function processDirectory(directoryPath: string): Promise<void> {
   }
 }
 
-// URL del repositorio Git y ruta local donde se clonará
-const repoUrl = 'https://github.com/elastic/kibana.git'; // Cambiar por la URL de tu repositorio
-//const localPath = './kibana'; // Cambiar por la ruta local donde quieres clonar el repositorio
-//const localPath = './kibana/x-pack/test/security_solution_cypress/cypress/e2e/detection_response/detection_engine/detection_alerts/assignments'
 
-//const localPath = './kibana/x-pack/test/security_solution_cypress/cypress/e2e/detection_response/detection_engine/detection_alerts/enrichments'
-
-const localPath = "./kibana/x-pack/test/security_solution_cypress/cypress/e2e/detection_response/detection_engine/detection_alerts/status"
-
-// Llamar a la función principal para procesar el repositorio Git
+const repoUrl = 'https://github.com/elastic/kibana.git'; 
+const localPath = './kibana';
 processRepo(repoUrl, localPath);

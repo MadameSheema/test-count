@@ -1,18 +1,20 @@
 {
   "name": "test-count",
   "module": "index.ts",
-  "type": "module",
-  "devDependencies": {
-    "@types/bun": "latest"
-  },
   "peerDependencies": {
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "@elastic/elasticsearch": "^8.14.0",
     "axios": "^1.7.2",
     "simple-git": "^3.25.0"
   },
   "scripts": {
-    "test:count": "bun test_count.ts"
+    "start": "ts-node count.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.12",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.4"
   }
 }
