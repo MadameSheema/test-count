@@ -37,7 +37,7 @@ export const determineTeam = (filePath: string, type: string): string | null => 
      team = 'edr_workflows'
       
   } else if(filePath.match(CYPRESS_OSQUERY_REGEX)){
-     team = 'edr_worflows'
+     team = 'edr_workflows'
    } else {
     const regex = type === 'cypress' ? CYPRESS_TEAM_REGEX : API_TEAM_REGEX;
     let teamMatch = filePath.match(regex);
